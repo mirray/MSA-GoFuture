@@ -1,0 +1,205 @@
+@startuml Container_Diagram_Full_Infrastructure
+!include <C4/C4_Container>
+
+LAYOUT_LANDSCAPE()
+
+AddElementTag("ms", $borderColor="black", $fontColor="black")
+AddRelTag("ms", $textColor="black", $lineColor="black")
+AddRelTag("msa", $textColor="black", $lineColor="black", $lineStyle=DashedLine())
+
+AddElementTag(kafka, $borderColor="red", $fontColor="red")
+AddRelTag("kafka", $textColor="red", $lineColor="red", $lineStyle=DashedLine())
+
+System_Boundary(go_future_system, "GoFuture Platform") {
+    System_Boundary(mobile, "Mobile apps") {
+        Person(passenger, "Пассажир", "Заказывает поездки")
+        Person(driver, "Водитель", "Принимает заказы и получает выплаты")
+        Container(web_passenger, "Пассажирское приложение", "iOS/Android/Huawei", "Интерфейс для пассажиров")
+        Container(web_driver, "Водительское приложение", "iOS/Android/Huawei", "Интерфейс для водителей")
+        Rel(passenger, web_passenger, "Использует")
+        Rel(driver, web_driver, "Использует")
+    }
+    System_Boundary(cluster, Kubernetes Cluster, $tags="ms"){
+        System_Boundary(web, "Web apps") {
+            Person(manager, "Корпоративный менеджер", "Управляет счетами")    
+            Person(accountant, "Бухгалтер", "Контролирует выплаты")   
+                               
+            Container(web_portal, "Корпоративный веб-портал", "Web Application, pod", "Управление заказами")
+            Container(admin_portal, "Админ-панель", "Web Application, pod", "Управление выплатами")
+            Rel(manager, web_portal, "Использует")
+            Rel(accountant, admin_portal, "Использует")
+        }
+        Container(api_gateway, API gateway, Envoy Gateway, $tags="ms")
+        System_Boundary(driver_domain, Driver Domain){
+            Container(bff_driver, BFF Service (driver), "?", $tags="ms")
+            ContainerDb(bff_driver_cache, In Memory Cache (driver), Redis, $tags="ms")
+            Rel_R(bff_driver, bff_driver_cache, cache data,  $tags="ms")  
+            
+            Container(tracking_s, "Tracking Service", Pod with sidecar proxy, "Collect Gps locations from drivers in real time", $tags="ms")            
+            ContainerDb(tracking_redis, "Поисковый индекс", "Redis", "Геопоиск водителей", $tags="ms")
+            Rel_R(tracking_s, tracking_redis, "Store GPS point (H3)", $tags="ms")        
+            Rel(bff_driver, tracking_s, send GPS data, $tags="ms")
+            
+            Container(driver_s, "Driver Service", Pod with sidecar proxy, "Управление водителями", $tags="ms")
+            ContainerDb(driver_db, "Driver Data", PostgresQl, Driver profiles and payment infos, $tags="ms")
+            Rel(driver_s, driver_db, uses, $tags=ms)
+            Rel(bff_driver, driver_db, uses, $tags=ms)            
+            Rel_U(driver_s, tracking_redis, "Search Drivers", $tags="ms")        
+                                 
+        }
+        System_Boundary(passenger_domain, Passenger Domain){
+            Container(bff_passenger, BFF Service (passenger), ?, $tags="ms")
+            ContainerDb(bff_passenger_cache, In Memory Cache (passenger), Redis, $tags="ms")
+            Rel_R(bff_passenger, bff_passenger_cache, cache data,  $tags="ms")                
+        }
+        System_Boundary(payouts_domain, Payouts Domain){
+            Container(bff_admin, BFF Service (admin), "?", $tags="ms")
+            ContainerDb(bff_admin_cache, In Memory Cache (admin), Redis, $tags="ms")
+            Rel_R(bff_admin, bff_admin_cache, cache data,  $tags="ms")   
+            
+            System_Ext(bank_api, "API Банка", "Банковские выплаты")
+            ContainerDb(payoutsDb, "Payouts Data", "PostgresQl", $tags="ms")               
+            Container(payouts_s, "Payouts Service", "Pod with sidecar proxy", "Выплаты водителям", $tags="ms")
+            Rel(bff_admin, payouts_s, "Инициирование выплат", $tags="ms")
+            Rel(payouts_s, bank_api, "Выполняет выплаты", "REST API")
+            Rel_R(payouts_s, payoutsDb, uses, $tags="ms")
+            Rel(bff_admin , payoutsDb, uses, $tags="ms")
+            Rel(accountant, admin_portal, "Использует")
+                             
+        }
+        System_Boundary(corporate_domain, Corporate Domain){
+            Container(bff_portal, BFF Service (portal), "?", $tags="ms")
+            ContainerDb(bff_portal_cache, In Memory Cache (portal), Redis, $tags="ms")
+            Rel_R(bff_portal, bff_portal_cache, cache data,  $tags="ms")                
+        }
+        System_Boundary(booking_domain, Booking Domain){
+            Container(booking_s, Booking Orchestration, "Camunda, Pod with sidecar proxy", $tags="ms")
+            ContainerDb(booking_db, Booking Data, PostgresQL, $tags="ms")
+            Rel(booking_s, booking_db, uses, $tags="ms")                                    
+        }
+        Rel(web_passenger, api_gateway, HTTP/REST API, $tags="ms")
+        Rel(web_driver, api_gateway, HTTP/REST API, $tags="ms")
+        Rel(web_portal, api_gateway, HTTP/REST API, $tags="ms")
+        Rel(admin_portal, api_gateway, HTTP/REST API, $tags="ms")
+        Rel(api_gateway, bff_passenger, routes traffic to, $tags="ms")
+        Rel(api_gateway, bff_driver, routes traffic to, $tags="ms")
+        Rel(api_gateway, bff_portal, routes traffic to, $tags="ms")
+        Rel(api_gateway, bff_admin, routes traffic to, $tags="ms")
+     
+        System_Boundary(geography_domain, "Geography Domain"){
+            System_Ext(yandex_maps, "Яндекс Карты", "Картографический сервис")
+            Container(geography_s, "Geography Service",Prod with sidecar proxy, "Геопоиск и маршрутизация", $tags="ms")
+                            
+            ContainerDb(geography_cache, In Memory cache, Redis,  $tags="ms")
+            Rel(geography_s, yandex_maps, "Запросы геоданных")
+            Rel_R(geography_s, geography_cache, caching data,  $tags="ms")
+        }
+        System_Boundary(pricing_domain, "Pricing Domain"){
+                Container(pricing_s, "Pricing Service", Pod with sidecar proxy, "Ценообразование", $tags="ms")
+                Container(pricing_ml, "ML for pricing service", $tags=kafka)
+                BiRel(pricing_s, pricing_ml, uses, $tags="kafka")
+                
+        }    
+        System_Boundary(ci_cd, "CI/CD"){
+            Person(dev_engineer, "Разработчик", "Разрабатывает новые функции")
+            Container(jenkins, "Jenkins", "CI/CD pod on Kubernetes", "Сборка и деплой сервисов", $tags="ms")
+            System_Ext(artifact_repo, "Artifact Repository", "Dcoker registry", "Хранение образов приложения", $tags="ms")
+            Container(ci_worker, "CI/CD Workers", "Pods", "Выполнение задач сборки и тестов", $tags="ms")
+            Rel(jenkins, ci_worker, "Запускает задачи", "SSH/API")
+            Rel_L(ci_worker, artifact_repo, "Пушит образы", "Docker Push")
+            Rel(jenkins, artifact_repo, "Деплоит образы", "Docker Pull")
+            Rel_D(dev_engineer, jenkins, "Запускает сборки")
+        }
+        System_Boundary(payments_domain, "Payments Domain"){
+            Container(payments_s, "Payments Service", "Django App", "Платежи от пассажиров", $tags="ms")
+            ContainerDb(paymentsDb, "Payments Data", "PostgresQl", "Платежи от пассажиров", $tags="ms")
+            Rel(payments_s, paymentsDb, uses)
+            System_Ext(yandex_pay, "Яндекс Пэй", "Платёжный шлюз")
+            Rel(payments_s, yandex_pay, "Обработка платежей", $tags="ms")
+        }
+        System_Boundary(fraud_domain, "Fraud Domain"){
+            Container(fraud_s, "Fraud Domain", "Django App", "Обнаружение мошенничества", $tags="ms")
+        }
+        System_Boundary(notification_domain, "Notification Domain"){
+            Container(notification_s, "Notification Service", "Django App", "Управление уведомлениями", $tags="ms")
+            ContainerDb(notificationDb, "Notification Logs", "Elasticsearch", "Логи Уведомлений", $tags="ms")
+            Rel_R(notification_s, notificationDb, "uses")
+            System_Ext(fcm, "FCM", "Push-сервис Google")
+            System_Ext(apns, "APNs", "Push-сервис Apple")
+            System_Ext(huawei_push, "Huawei Push Kit", "Push-сервис Huawei")
+            Rel_D(notification_s, fcm, "Отправляет уведомления", "REST API", $tags="ms")
+            Rel_D(notification_s, apns, "Отправляет уведомления", "REST API", $tags="ms")
+            Rel_D(notification_s, huawei_push, "Отправляет уведомления", "REST API", $tags="ms")
+    
+        }
+         System_Boundary(metrics_domain, "Metrics Domain"){
+            Person(sre_engineer, "SRE инженер", "Мониторит и поддерживает систему")
+            ContainerDb(monitoringDb, "Metrics DB", "ClickHouse", "Monitoring data", "Метрики, логи и мониторинг", $tags="ms")
+            Container(grafana, "Grafana", "Dashboard System", "Визуализация метрик и дашборды")
+            Container(alert_manager, "Alertmanager", "Alert System", "Управление алертами")
+            Rel_U(sre_engineer, grafana, "Мониторит систему")
+            Rel_U(sre_engineer, alert_manager, "Настраивает алерты")
+            Container(metric_worker, "Metrics Worker", "Collects metrics from pods",  $tags="ms")
+            Container(log_worker, "Logs Worker", "Collects logs from pods",  $tags="ms")
+            Rel(metric_worker, monitoringDb, "writes to", $tags="ms")
+            Rel(monitoringDb, grafana, "Предоставляет данные", "PromQL")
+            Rel(monitoringDb, alert_manager, "Отправляет алерты", "Alert Rules")
+            Rel(alert_manager, sre_engineer, "Отправляет уведомления", "Email/Slack/Pager")
+            Rel(log_worker, monitoringDb, "Отправляет логи", "Logs", $tags="ms")
+        }
+        System_Boundary(analytics_domain, "Analytics Domain"){
+            Container(analytics_s, "Analytics Service", DaemonSet, "Collect analytical data directly from pods", $tags="ms")
+            Container(analytics_engine, "Analytics Engine", "Spark/Flink", "Обработка аналитических данных")
+            ContainerDb(analytics_db, "Analytics DB", "ClickHouse", "Хранение аналитических данных")
+            Container(datalens, "DataLens", "BI Tool", "Визуализация бизнес-метрик")
+            Rel(analytics_engine, analytics_db, "Записывает данные", "ETL Process")
+            Rel(analytics_db, datalens, "Предоставляет данные", "SQL Queries")
+            Rel(datalens, manager, "Бизнес-отчёты", "Dashboards")
+            Rel(datalens, accountant, "Финансовые отчёты", "Dashboards")
+            Rel(analytics_s, analytics_engine, uses, $tags=ms)
+        
+        }
+        
+    }
+}
+
+Rel(bff_driver, booking_s, get ride info, $tags=ms)
+Rel(bff_passenger, booking_s, request ride, $tags=ms)
+Rel(bff_portal, booking_s, request ride, $tags=ms)
+
+
+Rel(booking_s, fraud_s, Topic: RideRequested, $tags=kafka)
+Rel(fraud_s, booking_s, Topic: FraudCompleted, $tags=kafka)
+Rel(fraud_s, booking_s, Topic: FraudRejected, $tags=kafka)
+
+Rel_R(booking_s, geography_s, Topic: RideFraudChecked, $tags=kafka)
+Rel_L(geography_s, booking_s, Topic: RouteFound, $tags=kafka)
+Rel_L(geography_s, booking_s, Topic: RouteRejected, $tags=kafka)
+
+Rel_R(booking_s, pricing_s, Topic: RideRouteFound, $tags=kafka)
+Rel_L(pricing_s, booking_s, Topic: PriceCalculated, $tags=kafka)
+Rel_L(pricing_s, booking_s, Topic: PriceRejected, $tags=kafka)
+
+Rel(booking_s, driver_s, Topic: RidePriceCalculated, $tags=kafka)
+Rel(driver_s, booking_s, Topic: DriverFound, $tags=kafka)
+Rel(driver_s, booking_s, Topic: DriverNotFound, $tags=kafka)
+Rel(driver_s, booking_s, Topic: DriverCancelled, $tags=kafka)
+Rel(driver_s, booking_s, Topic: DriverOnPlace, $tags=kafka)
+Rel(driver_s, booking_s, Topic: DriverRideStarted, $tags=kafka)
+Rel(driver_s, booking_s, Topic: DriverRideCompleted, $tags=kafka)
+
+Rel(booking_s, payments_s, Topic: RideCompleted, $tags=kafka)
+Rel(payments_s, booking_s, Topic: PaymentCompleted, $tags=kafka)
+Rel(payments_s, booking_s, Topic: PaymentRejected, $tags=kafka)
+
+Rel(booking_s, payouts_s, Topic: RideCompleted, $tags=kafka)
+Rel(payouts_s, booking_s, Topic: PayoutCompleted, $tags=kafka)
+Rel(payouts_s, booking_s, Topic: PayoutRejected, $tags=kafka)
+
+
+Rel(payments_s, fraud_s, check for fraud, gRPC, $tags=ms)
+
+Rel(pricing_ml, analytics_engine, uses to calculate price, $tags=kafka)
+
+
+@enduml
