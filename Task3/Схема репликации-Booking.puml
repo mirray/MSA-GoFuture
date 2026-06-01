@@ -1,0 +1,47 @@
+@startuml
+!include <C4/C4_Deployment>
+
+LAYOUT_LEFT_RIGHT()
+title Deployment Diagram - Cross-Region Booking Replication (Singapore <-> Jakarta)
+
+' Region 1 Deployment (Primary/Source in Singapore)
+Deployment_Node(region_singapore, "Singapore Region (ap-southeast-1)", "Cloud Infrastructure / AWS / GCP") {
+    
+    Deployment_Node(source_node, "Source Node (Booking Domain)", "EKS / Compute Instances") {
+        Deployment_Node(app_container, "Orchestrator Run Environment", "Docker Container") {
+            Container(backend_app, "Booking Orchestration Service", "Java / Spring Boot / Go", "Coordinates booking workflows, state machine execution, and emits domain state changes")
+        }
+        Deployment_Node(db_primary_container, "Primary Storage Server", "Managed Cloud DB Instance") {
+            ContainerDb(primary_db, "Booking Primary DB", "PostgreSQL / MySQL", "Stores source-of-truth booking states, workflow logs, and transaction details")
+        }
+    }
+    
+    Deployment_Node(kafka_cluster, "Event Streaming Platform", "Apache Kafka Cluster") {
+        ContainerQueue(kafka_topic, "booking-events Topic", "Kafka Topic", "Holds an ordered log of booking status changes and state events")
+    }
+}
+
+' Region 2 Deployment (Secondary/Target in Jakarta)
+Deployment_Node(region_jakarta, "Jakarta Region (ap-southeast-3)", "Cloud Infrastructure / AWS / GCP") {
+    
+    Deployment_Node(target_node, "Target Node (Read Replica)", "EKS / Compute Instances") {
+        Deployment_Node(consumer_container, "Consumer Run Environment", "Docker Container") {
+            Container(consumer_app, "Booking Event Consumer", "Java / Node.js / Python", "Subscribes to cross-region booking-events, flattens payload, and handles read-model ingestion")
+        }
+        Deployment_Node(db_replica_container, "Replica Storage Server", "Managed Cloud DB Instance") {
+            ContainerDb(replica_db, "Booking Replica DB", "PostgreSQL", "Optimized read-only synchronized storage for regional lookups or disaster recovery")
+        }
+    }
+}
+
+' Local Links (Within Singapore)
+Rel(backend_app, primary_db, "Manages workflow states & persists data", "JDBC/SQL via TLS")
+Rel(backend_app, kafka_topic, "Publishes lifecycle events", "Kafka Producer API / TCP")
+
+' Cross-Region Link (Singapore to Jakarta network transit)
+Rel(consumer_app, kafka_topic, "Polls booking events across regions", "Kafka Consumer API / TCP via Inter-Region Network Peering")
+
+' Local Links (Within Jakarta)
+Rel(consumer_app, replica_db, "Updates regional read-models & query views", "JDBC/SQL")
+
+@enduml
