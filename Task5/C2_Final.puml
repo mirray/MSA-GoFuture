@@ -11,6 +11,14 @@ AddElementTag(red, $borderColor="red", $fontColor="red")
 AddRelTag(red, $textColor="red", $lineColor="red")
 
 System_Boundary(go_future_system, "GoFuture Platform") {
+    System_Boundary(tenant_setup, Tenant OnBoarding ){
+        Container(terraform, Terraform, K8s cluster setup, $tags=red)
+        Person(devops, DevOps engineer, $tags=red)
+        Rel(devops, terraform,  setup cluster for tenant, $tags=red)
+    }
+    System_Boundary(iam, IAM){
+        Container(oidc, OIDC provider, $tags=red)
+    }
     System_Boundary(mobile, "Mobile apps") {
         Person(passenger, "Пассажир", "Заказывает поездки")
         Person(driver, "Водитель", "Принимает заказы и получает выплаты")
@@ -19,7 +27,9 @@ System_Boundary(go_future_system, "GoFuture Platform") {
         Rel(passenger, web_passenger, "Использует")
         Rel(driver, web_driver, "Использует")
     }
-    System_Boundary(cluster, Kubernetes Cluster, $tags="ms"){
+    System_Boundary(cluster, Kubernetes Cluster by tenant, $tags=red){
+        Container(roles, ClusterRoleBinding, $tags=red)
+        Rel(oidc, roles, uses)
         System_Boundary(web, "Web apps") {
             Person(manager, "Корпоративный менеджер", "Управляет счетами")    
             Person(accountant, "Бухгалтер", "Контролирует выплаты")   
@@ -95,9 +105,9 @@ System_Boundary(go_future_system, "GoFuture Platform") {
             Rel_R(geography_s, geography_cache, caching data,  $tags="ms")
         }
          System_Boundary(pricing_domain, "Pricing Domain"){
-                        Container(pricing_s, "Pricing Service", "KStreams, Pod with sidecar proxy", "Ценообразование", $tags="red")
-                        Container(pricing_ml, "ML for pricing service", $tags=red)
-                        BiRel(pricing_s, pricing_ml, uses, $tags=red)
+                        Container(pricing_s, "Pricing Service", "KStreams, Pod with sidecar proxy", "Ценообразование", $tags=ms)
+                        Container(pricing_ml, "ML for pricing service", $tags=ms)
+                        BiRel(pricing_s, pricing_ml, uses, $tags=ms)
                         
                 }       
         System_Boundary(ci_cd, "CI/CD"){
@@ -118,9 +128,9 @@ System_Boundary(go_future_system, "GoFuture Platform") {
             Rel(payments_s, yandex_pay, "Обработка платежей", $tags="ms")
         }
         System_Boundary(fraud_domain, "Fraud Domain"){
-            Container(fraud_s, "Fraud Service", "Django App", "Обнаружение мошенничества", $tags=red)
-            Container(fraud_ml, "Fraud ML system", $tags=red)
-            Rel(fraud_s, fraud_ml, uses, $tags=red)
+            Container(fraud_s, "Fraud Service", "Django App", "Обнаружение мошенничества", $tags=ms)
+            Container(fraud_ml, "Fraud ML system", $tags=ms)
+            Rel(fraud_s, fraud_ml, uses, $tags=ms)
         }
         System_Boundary(notification_domain, "Notification Domain"){
             Container(notification_s, "Notification Service", "Django App", "Управление уведомлениями", $tags="ms")
@@ -136,25 +146,25 @@ System_Boundary(go_future_system, "GoFuture Platform") {
         }
          System_Boundary(metrics_domain, "Metrics Domain"){
              Person(sre_engineer, "SRE инженер", "Мониторит и поддерживает систему")
-             ContainerDb(monitoringDb, "Metrics DB", "ClickHouse", "Monitoring data", "Метрики, логи и мониторинг", $tags=red)
+             ContainerDb(monitoringDb, "Metrics DB", "ClickHouse", "Monitoring data", "Метрики, логи и мониторинг", $tags=ms)
              Container(grafana, "Grafana", "Dashboard System", "Визуализация метрик и дашборды")
              Container(alert_manager, "Alertmanager", "Alert System", "Управление алертами")
              Rel_U(sre_engineer, grafana, "Мониторит систему")
              Rel_U(sre_engineer, alert_manager, "Настраивает алерты")
-             Container(metric_worker, "Metrics Worker", "Collects metrics from pods",  $tags=red)
-             Container(log_worker, "Logs Worker", "Collects logs from pods",  $tags=red)
-             Rel(metric_worker, monitoringDb, "writes to", $tags=red)
+             Container(metric_worker, "Metrics Worker", "Collects metrics from pods",  $tags=ms)
+             Container(log_worker, "Logs Worker", "Collects logs from pods",  $tags=ms)
+             Rel(metric_worker, monitoringDb, "writes to", $tags=ms)
              Rel(monitoringDb, grafana, "Предоставляет данные", "PromQL")
              Rel(monitoringDb, alert_manager, "Отправляет алерты", "Alert Rules")
              Rel(alert_manager, sre_engineer, "Отправляет уведомления", "Email/Slack/Pager")
-             Rel(log_worker, monitoringDb, "Отправляет логи", "Logs", $tags=red)
+             Rel(log_worker, monitoringDb, "Отправляет логи", "Logs", $tags=ms)
          }
         System_Boundary(analytics_domain, "Analytics Domain"){
             Container(analytics_s, "Analytics Service", DaemonSet, "Collect analytical data directly from pods", $tags="ms")
             Container(analytics_engine, "Analytics Engine", "Spark/Flink", "Обработка аналитических данных")
             ContainerDb(analytics_db, "Analytics DB", "ClickHouse", "Хранение аналитических данных")
             Container(datalens, "DataLens", "BI Tool", "Визуализация бизнес-метрик")
-            Container(analytic_ml, ML for demand prediction, $tags=red)
+            Container(analytic_ml, ML for demand prediction, $tags=ms)
             Rel(analytics_engine, analytics_db, "Записывает данные", "ETL Process")
             Rel(analytics_db, datalens, "Предоставляет данные", "SQL Queries")
             Rel(datalens, manager, "Бизнес-отчёты", "Dashboards")
@@ -173,15 +183,15 @@ Rel(bff_portal, booking_s, request ride, $tags=ms)
 Rel(booking_s, driver_s, "search for driver", kafka, $tags=msa)
 Rel(booking_s, pricing_s, request price, kafka, $tags=msa)
 Rel(booking_s, geography_s, request route, kafka, $tags=msa)
-Rel(booking_s, fraud_s, fraud check, kafka, $tags=red)
+Rel(booking_s, fraud_s, fraud check, kafka, $tags=ms)
 Rel(booking_s, payments_s, request payment, kafka, $tags=msa)
 Rel(booking_s, payouts_s, request payout, kafka, $tags=msa)
 Rel(booking_s, notification_s, send push, kafka, $tags=msa)
 Rel(booking_s, driver_s, payout amount, kafka, $tags=msa)
-Rel(payments_s, fraud_s, check for fraud, kafka, $tags=red)
+Rel(payments_s, fraud_s, check for fraud, kafka, $tags=ms)
 
-Rel(pricing_ml, analytics_db, uses to calculate price, $tags=red)
-Rel(fraud_ml, analytics_db, uses to predict fraud transaction, $tags=red)
-BiRel(analytic_ml, analytics_db, uses, $tags=red)
+Rel(pricing_ml, analytics_db, uses to calculate price, $tags=ms)
+Rel(fraud_ml, analytics_db, uses to predict fraud transaction, $tags=ms)
+BiRel(analytic_ml, analytics_db, uses, $tags=ms)
             
 @enduml

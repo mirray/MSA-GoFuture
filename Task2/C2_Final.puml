@@ -170,31 +170,24 @@ Rel(bff_portal, booking_s, request ride, $tags=ms)
 
 Rel(booking_s, fraud_s, Topic: RideRequested, $tags=kafka)
 Rel(fraud_s, booking_s, Topic: FraudCompleted, $tags=kafka)
-Rel(fraud_s, booking_s, Topic: FraudRejected, $tags=kafka)
 
 Rel_R(booking_s, geography_s, Topic: RideFraudChecked, $tags=kafka)
 Rel_L(geography_s, booking_s, Topic: RouteFound, $tags=kafka)
-Rel_L(geography_s, booking_s, Topic: RouteRejected, $tags=kafka)
 
 Rel_R(booking_s, pricing_s, Topic: RideRouteFound, $tags=kafka)
 Rel_L(pricing_s, booking_s, Topic: PriceCalculated, $tags=kafka)
-Rel_L(pricing_s, booking_s, Topic: PriceRejected, $tags=kafka)
 
 Rel(booking_s, driver_s, Topic: RidePriceCalculated, $tags=kafka)
 Rel(driver_s, booking_s, Topic: DriverFound, $tags=kafka)
-Rel(driver_s, booking_s, Topic: DriverNotFound, $tags=kafka)
-Rel(driver_s, booking_s, Topic: DriverCancelled, $tags=kafka)
 Rel(driver_s, booking_s, Topic: DriverOnPlace, $tags=kafka)
 Rel(driver_s, booking_s, Topic: DriverRideStarted, $tags=kafka)
 Rel(driver_s, booking_s, Topic: DriverRideCompleted, $tags=kafka)
 
 Rel(booking_s, payments_s, Topic: RideCompleted, $tags=kafka)
 Rel(payments_s, booking_s, Topic: PaymentCompleted, $tags=kafka)
-Rel(payments_s, booking_s, Topic: PaymentRejected, $tags=kafka)
 
 Rel(booking_s, payouts_s, Topic: RideCompleted, $tags=kafka)
 Rel(payouts_s, booking_s, Topic: PayoutCompleted, $tags=kafka)
-Rel(payouts_s, booking_s, Topic: PayoutRejected, $tags=kafka)
 
 
 Rel(payments_s, fraud_s, check for fraud, gRPC, $tags=ms)
